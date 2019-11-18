@@ -21,52 +21,65 @@ class WumpusProblem(search.Problem):
         """Don't forget to implement the goal test
         You should change the initial to your own representation.
         search.Problem.__init__(self, initial) creates the root node"""
-        heroes = []
+        initial_state = set()
         self.doors = [(0,0), (0,0), (0,0), (0,0), (0,0)]
         self.keys = [(0,0), (0,0), (0,0), (0,0), (0,0)]
         for i in range(len(initial)):
             for j in range(len(initial[0])):
                 if initial[i][j] in heroes_values:
-                    heroes.append((initial[i][j],i,j))
+                    initial_state.add((initial[i][j],i,j))
                 elif initial[i][j] == gold_value:
                     self.treasure = (i, j)
                 elif initial[i][j] in doors_values:
                     self.doors[initial[i][j] - 45] = (i, j)
                 elif initial[i][j] in keys_values:
                     self.keys[initial[i][j] - 55] = (i, j)
+                elif initial[i][j] == monster_value:
+                    initial_state.add((monster_value, i, j))
         self.game_board = initial
         search.Problem.__init__(self, initial)
-        self.initial = frozenset(heroes)
+        self.initial = frozenset(initial_state)
         
     def actions(self, state):
         """Return the actions that can be executed in the given
         state. The result should be a tuple (or other iterable) of actions
         as defined in the problem description file"""
-        for hero_state in state:
+        for hero_state in filter(lambda x : x[0] != monster_value, state):
             hero_number, row, column = hero_state
             for action in self._calculate_actions(hero_number, row, column, state):
                 yield action
     
+    def can_kill_monster(self, hero, direction, monster):
+        hero_number, row, column = hero
+        if direction in ['R', 'L']:
+            return row == monster[1]
+        else:
+            return column == monster[2]
+
     def result(self, state, action):
         """Return the state that results from executing the given
         action in the given state. The action must be one of
         self.actions(state)."""
         direction, hero, current_action = action
-        used_hero = filter(lambda x: x[0] == hero, state)
+        used_hero = next(filter(lambda x: x[0] == hero, state))
+        if current_action == 'shoot':
+            killed_monster = next(filter(lambda x: x[0] == monster_value and self.can_kill_monster(used_hero, direction, x), state))
+            new_state = set(state)
+            new_state.remove(killed_monster)
+            return frozenset(new_state)
+
         not_used_heroes = [x for x in state if x[0] != hero]
         new_state = ()
-        for hero in used_hero:
-            hero_number, row, column = hero
-            if direction == 'R':
-                new_state = (hero_number, row, column + 1)
-            elif direction == 'L':
-                new_state = (hero_number, row, column - 1)
-            elif direction == 'U':
-                new_state = (hero_number, row - 1, column)
-            elif direction == 'D':
-                new_state = (hero_number, row + 1, column)
+        hero_number, row, column = used_hero
+        if direction == 'R':
+            new_state = (hero_number, row, column + 1)
+        elif direction == 'L':
+            new_state = (hero_number, row, column - 1)
+        elif direction == 'U':
+            new_state = (hero_number, row - 1, column)
+        elif direction == 'D':
+            new_state = (hero_number, row + 1, column)
         not_used_heroes.append(new_state)
-        print(not_used_heroes)
         return frozenset(not_used_heroes)
 
     def h(self, node):
@@ -84,19 +97,45 @@ class WumpusProblem(search.Problem):
                     return True
         return False
 
+    def can_move(self, row, column, state):
+        return self.game_board[row][column] != monster_value or \
+            (self.game_board[row][column] == monster_value and (monster_value, row, column) not in state)
+
     def _calculate_actions(self, hero, row, column, state):
         ''' this function calculate the actions avialable for
         a single state(not list)
         '''
         actions = []
-        if len(self.game_board[0]) > column + 1 and self.game_board[row][column + 1] in [passage_value, gold_value]:
-            actions.append(('R', hero, 'move'))
-        if column - 1 >= 0 and self.game_board[row][column - 1] in [passage_value, gold_value]:
-            actions.append(('L', hero, 'move'))
-        if len(self.game_board) > row + 1 and self.game_board[row + 1][column] in [passage_value, gold_value]:
-            actions.append(('D', hero, 'move'))
-        if row - 1 >= 0 and self.game_board[row - 1][column] in [passage_value, gold_value]:
-            actions.append(('U', hero, 'move'))
+        #calculate monster actions
+        unpassable_values = [doors_values, wall_value]
+        for monster in filter(lambda  x: x[0] == monster_value, state):
+            value, monster_row, monster_column = monster
+            if row == monster_row:
+                if monster_column < column:
+                    if unpassable_values not in self.game_board[row][monster_column:column]:
+                        actions.append(('L', hero, 'shoot'))
+                elif unpassable_values not in self.game_board[row][column:monster_column]:
+                    actions.append(('R', hero, 'shoot'))
+            elif column == monster_column:
+                if monster_row < row:
+                    if unpassable_values not in [self.game_board[monster_row + i][column] for i in range(row - monster_row)]:
+                        actions.append(('U', hero, 'shoot'))
+                elif unpassable_values not in [self.game_board[row + i][column] for i in range(monster_row - row)]:
+                    actions.append(('D', hero, 'shoot'))
+        
+        if len(self.game_board[0]) > column + 1 and self.game_board[row][column + 1] in [passage_value, gold_value, monster_value]:
+            if self.can_move(row, column + 1, state):
+                actions.append(('R', hero, 'move'))
+        if column - 1 >= 0 and self.game_board[row][column - 1] in [passage_value, gold_value, monster_value]:
+            if self.can_move(row, column - 1, state):
+                actions.append(('L', hero, 'move'))
+        if len(self.game_board) > row + 1 and self.game_board[row + 1][column] in [passage_value, gold_value, monster_value]:
+            if self.can_move(row + 1, column, state):
+                actions.append(('D', hero, 'move'))
+        if row - 1 >= 0 and self.game_board[row - 1][column] in [passage_value, gold_value, monster_value]:
+            if self.can_move(row - 1, column, state):
+                actions.append(('U', hero, 'move'))
+
         return actions
 
 
