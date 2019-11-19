@@ -13,6 +13,8 @@ keys_values = [55, 56, 57, 58, 59]
 monster_value = 60
 gold_value = 70
 
+unpassable_values = [doors_values, wall_value]
+passable_values = [passage_value, gold_value]
 
 class WumpusProblem(search.Problem):
     """This class implements a wumpus problem"""
@@ -46,7 +48,7 @@ class WumpusProblem(search.Problem):
         as defined in the problem description file"""
         for hero_state in filter(lambda x : x[0] != monster_value, state):
             hero_number, row, column = hero_state
-            for action in self._calculate_actions(hero_number, row, column, state):
+            for action in self.calculate_actions(hero_number, row, column, state):
                 yield action
     
     def can_kill_monster(self, hero, direction, monster):
@@ -98,16 +100,11 @@ class WumpusProblem(search.Problem):
         return False
 
     def can_move(self, row, column, state):
-        return self.game_board[row][column] != monster_value or \
+        return self.game_board[row][column] in passable_values or \
             (self.game_board[row][column] == monster_value and (monster_value, row, column) not in state)
 
-    def _calculate_actions(self, hero, row, column, state):
-        ''' this function calculate the actions avialable for
-        a single state(not list)
-        '''
+    def calculate_monster_actions(self, row, column, hero, state):
         actions = []
-        #calculate monster actions
-        unpassable_values = [doors_values, wall_value]
         for monster in filter(lambda  x: x[0] == monster_value, state):
             value, monster_row, monster_column = monster
             if row == monster_row:
@@ -122,27 +119,28 @@ class WumpusProblem(search.Problem):
                         actions.append(('U', hero, 'shoot'))
                 elif unpassable_values not in [self.game_board[row + i][column] for i in range(monster_row - row)]:
                     actions.append(('D', hero, 'shoot'))
-        
-        if len(self.game_board[0]) > column + 1 and self.game_board[row][column + 1] in [passage_value, gold_value, monster_value]:
-            if self.can_move(row, column + 1, state):
-                actions.append(('R', hero, 'move'))
-        if column - 1 >= 0 and self.game_board[row][column - 1] in [passage_value, gold_value, monster_value]:
-            if self.can_move(row, column - 1, state):
-                actions.append(('L', hero, 'move'))
-        if len(self.game_board) > row + 1 and self.game_board[row + 1][column] in [passage_value, gold_value, monster_value]:
-            if self.can_move(row + 1, column, state):
-                actions.append(('D', hero, 'move'))
-        if row - 1 >= 0 and self.game_board[row - 1][column] in [passage_value, gold_value, monster_value]:
-            if self.can_move(row - 1, column, state):
-                actions.append(('U', hero, 'move'))
+        return actions
+
+    def calculate_actions(self, hero, row, column, state):
+        ''' this function calculate the actions avialable for
+        a single state(not list)
+        '''
+        actions = []
+        #calculate monster actions
+        actions.extend(self.calculate_monster_actions(row, column, hero, state))
+        if len(self.game_board[0]) > column + 1 and self.can_move(row, column + 1, state):
+            actions.append(('R', hero, 'move'))
+        if column - 1 >= 0 and self.can_move(row, column - 1, state):
+            actions.append(('L', hero, 'move'))
+        if len(self.game_board) > row + 1 and self.can_move(row + 1, column, state):
+            actions.append(('D', hero, 'move'))
+        if row - 1 >= 0 and self.can_move(row - 1, column, state):
+            actions.append(('U', hero, 'move'))
 
         return actions
 
-
     """Feel free to add your own functions
     (-2, -2, None) means there was a timeout"""
-
-
 
 def create_wumpus_problem(game):
     return WumpusProblem(game)
