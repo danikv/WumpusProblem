@@ -5,16 +5,18 @@ import math
 
 ids = ["111111111", "111111111"]
 passage_value = 10
-heroes_values = [11, 12, 13, 14]
+heroes_values = {11, 12, 13, 14}
 wall_value = 20
 pit_value = 30
-doors_values = [45, 46, 47, 48, 49]
+doors_values = {45, 46, 47, 48, 49}
 keys_values = [55, 56, 57, 58, 59]
 monster_value = 60
 gold_value = 70
 
-unpassable_values = [doors_values, wall_value]
+unpassable_values = {wall_value}
+unpassable_values.update(doors_values)
 passable_values = [passage_value, gold_value]
+passable_values.extend(keys_values)
 
 class WumpusProblem(search.Problem):
     """This class implements a wumpus problem"""
@@ -33,7 +35,7 @@ class WumpusProblem(search.Problem):
                 elif initial[i][j] == gold_value:
                     self.treasure = (i, j)
                 elif initial[i][j] in doors_values:
-                    self.doors[initial[i][j] - 45] = (i, j)
+                    initial_state.add((initial[i][j], i, j))
                 elif initial[i][j] in keys_values:
                     self.keys[initial[i][j] - 55] = (i, j)
                 elif initial[i][j] == monster_value:
@@ -46,7 +48,7 @@ class WumpusProblem(search.Problem):
         """Return the actions that can be executed in the given
         state. The result should be a tuple (or other iterable) of actions
         as defined in the problem description file"""
-        for hero_state in filter(lambda x : x[0] != monster_value, state):
+        for hero_state in filter(lambda x : x[0] in heroes_values, state):
             hero_number, row, column = hero_state
             for action in self.calculate_actions(hero_number, row, column, state):
                 yield action
@@ -64,6 +66,23 @@ class WumpusProblem(search.Problem):
         new_state.remove(killed_monster)
         return frozenset(new_state)
 
+    def remove_door(self, row, column, state):
+        return set(filter(lambda x : x[0] != self.game_board[row][column] - 10, state))
+
+    def kill_hero(self, hero, row, column, state):
+        if (monster_value, row, column + 1) in state:
+            state.remove((hero, row, column))
+            state.remove((monster_value, row, column + 1))
+        elif (monster_value, row, column - 1) in state:
+            state.remove((hero, row, column))
+            state.remove((monster_value, row, column - 1))
+        elif (monster_value, row + 1, column) in state:
+            state.remove((hero, row, column))
+            state.remove((monster_value, row + 1, column))
+        elif (monster_value, row - 1, column) in state:
+            state.remove((hero, row, column))
+            state.remove((monster_value, row - 1, column))
+
     def move_action_result(self, direction, used_hero, state):
         hero_number, row, column = used_hero
         new_state = [x for x in state if x[0] != hero_number]
@@ -75,6 +94,9 @@ class WumpusProblem(search.Problem):
             new_state.append((hero_number, row - 1, column))
         elif direction == 'D':
             new_state.append((hero_number, row + 1, column))
+        hero, row, column = new_state[-1]
+        new_state = self.remove_door(row, column, new_state)
+        self.kill_hero(hero, row, column, new_state)
         return frozenset(new_state)
 
     def result(self, state, action):
@@ -103,8 +125,8 @@ class WumpusProblem(search.Problem):
                     return True
         return False
 
-    def can_move(self, row, column, state):
-        return self.game_board[row][column] in passable_values or \
+    def can_move(self, row, column, passable, state):
+        return self.game_board[row][column] in passable or \
             (self.game_board[row][column] == monster_value and (monster_value, row, column) not in state)
 
     def calculate_monster_actions(self, row, column, hero, state):
@@ -113,15 +135,15 @@ class WumpusProblem(search.Problem):
             value, monster_row, monster_column = monster
             if row == monster_row:
                 if monster_column < column:
-                    if unpassable_values not in self.game_board[row][monster_column:column]:
+                    if len(unpassable_values.intersection(set(self.game_board[row][monster_column:column]))) == 0:
                         actions.append(('L', hero, 'shoot'))
-                elif unpassable_values not in self.game_board[row][column:monster_column]:
+                elif len(unpassable_values.intersection(set(self.game_board[row][column:monster_column]))) == 0:
                     actions.append(('R', hero, 'shoot'))
             elif column == monster_column:
                 if monster_row < row:
-                    if unpassable_values not in [self.game_board[monster_row + i][column] for i in range(row - monster_row)]:
+                    if len(unpassable_values.intersection({self.game_board[monster_row + i][column] for i in range(row - monster_row)})) == 0:
                         actions.append(('U', hero, 'shoot'))
-                elif unpassable_values not in [self.game_board[row + i][column] for i in range(monster_row - row)]:
+                elif len(unpassable_values.intersection({self.game_board[row + i][column] for i in range(monster_row - row)})) == 0:
                     actions.append(('D', hero, 'shoot'))
         return actions
 
@@ -132,13 +154,17 @@ class WumpusProblem(search.Problem):
         actions = []
         #calculate monster actions
         actions.extend(self.calculate_monster_actions(row, column, hero, state))
-        if len(self.game_board[0]) > column + 1 and self.can_move(row, column + 1, state):
+        passable = [hero]
+        passable.extend(passable_values)
+        passable.extend(doors_values.symmetric_difference([x[0] for x in filter(lambda x : x[0] in doors_values, state)]))
+        passable.extend(heroes_values.symmetric_difference([x[0] for x in filter(lambda x : x[0] in heroes_values, state)]))
+        if len(self.game_board[0]) > column + 1 and self.can_move(row, column + 1, passable, state):
             actions.append(('R', hero, 'move'))
-        if column - 1 >= 0 and self.can_move(row, column - 1, state):
+        if column - 1 >= 0 and self.can_move(row, column - 1, passable, state):
             actions.append(('L', hero, 'move'))
-        if len(self.game_board) > row + 1 and self.can_move(row + 1, column, state):
+        if len(self.game_board) > row + 1 and self.can_move(row + 1, column, passable, state):
             actions.append(('D', hero, 'move'))
-        if row - 1 >= 0 and self.can_move(row - 1, column, state):
+        if row - 1 >= 0 and self.can_move(row - 1, column, passable, state):
             actions.append(('U', hero, 'move'))
 
         return actions
