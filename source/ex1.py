@@ -58,6 +58,25 @@ class WumpusProblem(search.Problem):
         else:
             return column == monster[2]
 
+    def shoot_action_result(self, direction, used_hero, state):
+        killed_monster = next(filter(lambda x: x[0] == monster_value and self.can_kill_monster(used_hero, direction, x), state))
+        new_state = set(state)
+        new_state.remove(killed_monster)
+        return frozenset(new_state)
+
+    def move_action_result(self, direction, used_hero, state):
+        hero_number, row, column = used_hero
+        new_state = [x for x in state if x[0] != hero_number]
+        if direction == 'R':
+            new_state.append((hero_number, row, column + 1))
+        elif direction == 'L':
+            new_state.append((hero_number, row, column - 1))
+        elif direction == 'U':
+            new_state.append((hero_number, row - 1, column))
+        elif direction == 'D':
+            new_state.append((hero_number, row + 1, column))
+        return frozenset(new_state)
+
     def result(self, state, action):
         """Return the state that results from executing the given
         action in the given state. The action must be one of
@@ -65,24 +84,9 @@ class WumpusProblem(search.Problem):
         direction, hero, current_action = action
         used_hero = next(filter(lambda x: x[0] == hero, state))
         if current_action == 'shoot':
-            killed_monster = next(filter(lambda x: x[0] == monster_value and self.can_kill_monster(used_hero, direction, x), state))
-            new_state = set(state)
-            new_state.remove(killed_monster)
-            return frozenset(new_state)
-
-        not_used_heroes = [x for x in state if x[0] != hero]
-        new_state = ()
-        hero_number, row, column = used_hero
-        if direction == 'R':
-            new_state = (hero_number, row, column + 1)
-        elif direction == 'L':
-            new_state = (hero_number, row, column - 1)
-        elif direction == 'U':
-            new_state = (hero_number, row - 1, column)
-        elif direction == 'D':
-            new_state = (hero_number, row + 1, column)
-        not_used_heroes.append(new_state)
-        return frozenset(not_used_heroes)
+            return self.shoot_action_result(direction, used_hero, state)
+        else :
+            return self.move_action_result(direction, used_hero, state)
 
     def h(self, node):
         """ This is the heuristic. It gets a node (not a state,
