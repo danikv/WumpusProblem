@@ -62,7 +62,7 @@ def solve_problems(problems):
             print("Error creating problem: ", e)
             return None
         timeout = 60
-        result = check_problem(p, (lambda p: search.breadth_first_search(p)), timeout)
+        result = check_problem(p, (lambda p: search.best_first_graph_search(p, p.h)), timeout)
         print("GBFS ", result)
         if result[2] != None:
             if result[0] != -3:
