@@ -78,66 +78,98 @@ class WumpusProblem(search.Problem):
         self.doors = [(0,0), (0,0), (0,0), (0,0), (0,0)]
         self.keys = [(0,0), (0,0), (0,0), (0,0), (0,0)]
         self.monsters = set()
-        self.game_heristic = [[0 for i in range(len(initial[0]))] for j in range(len(initial))]
+        initial_game_distances = [[0 for i in range(len(initial[0]))] for j in range(len(initial))]
         for i in range(len(initial)):
             for j in range(len(initial[0])):
                 if initial[i][j] in heroes_values:
                     initial_state.add((initial[i][j],i,j))
-                    self.game_heristic[i][j] = 1
+                    initial_game_distances[i][j] = 1
                 elif initial[i][j] == gold_value:
                     self.treasure = (i, j)
-                    self.game_heristic[i][j] = 1
+                    initial_game_distances[i][j] = 1
                 elif initial[i][j] in doors_values:
                     initial_state.add((initial[i][j], i, j))
                     self.doors[initial[i][j] - 45] = (i, j)
-                    self.game_heristic[i][j] = sys.maxsize
+                    initial_game_distances[i][j] = sys.maxsize
                 elif initial[i][j] in keys_values:
                     self.keys[initial[i][j] - 55] = (i, j)
-                    self.game_heristic[i][j] = 1
+                    initial_game_distances[i][j] = 1
                 elif initial[i][j] == monster_value:
                     initial_state.add((monster_value, i, j))
                     self.monsters.add((i,j))
-                    self.game_heristic[i][j] = sys.maxsize
+                    initial_game_distances[i][j] = sys.maxsize
                 elif initial[i][j] == passage_value:
-                    self.game_heristic[i][j] = 1
+                    initial_game_distances[i][j] = 1
                 else:
                     #pit or wall
-                    self.game_heristic[i][j] = sys.maxsize
+                    initial_game_distances[i][j] = sys.maxsize
         #change input for the algorithem
         self.game_board = initial
-        self.calculate_heuristic()
+        self.calculate_heuristic(initial_game_distances)
         search.Problem.__init__(self, initial)
         self.initial = frozenset(initial_state)
-        
-    def calculate_heuristic(self):
-        #create graph
-        graph = Graph()
-        for i in range(len(self.game_heristic)):
-            for j in range(len(self.game_heristic[0])):
+    
+
+    def create_graph_from_initial_distances(self, graph, initial_game_distances):
+        for i in range(len(initial_game_distances)):
+            for j in range(len(initial_game_distances[0])):
                 graph.add_node((i, j))
-                if len(self.game_heristic[0]) > j + 1:
-                    graph.add_edge((i, j), (i, j+1), self.game_heristic[i][j+1])
+                if len(initial_game_distances[0]) > j + 1:
+                    graph.add_edge((i, j), (i, j+1), initial_game_distances[i][j+1])
                 if j - 1 >= 0:
-                    graph.add_edge((i, j), (i, j-1), self.game_heristic[i][j-1])
-                if len(self.game_heristic) > i + 1:
-                    graph.add_edge((i, j), (i + 1, j), self.game_heristic[i + 1][j])
+                    graph.add_edge((i, j), (i, j-1), initial_game_distances[i][j-1])
+                if len(initial_game_distances) > i + 1:
+                    graph.add_edge((i, j), (i + 1, j), initial_game_distances[i + 1][j])
                 if i - 1 >= 0:
-                    graph.add_edge((i, j), (i - 1, j), self.game_heristic[i - 1][j])
-        #calculate min distance to pass door
-        #print('bla')
+                    graph.add_edge((i, j), (i - 1, j), initial_game_distances[i - 1][j])
+
+    def update_distances_for_doors(self, graph):
         for i in range(len(self.keys)):
             if self.keys[i] != (0,0) and self.doors[i] != (0,0):
                 graph.add_edge(self.keys[i], self.doors[i], 0)
                 #update near door values
                 row, column = self.doors[i]
-                if len(self.game_heristic[0]) > column + 1:
+                if len(self.game_board[0]) > column + 1:
                     graph.add_edge((row, column), (row, column+1), 1)
                 if column - 1 >= 0:
                     graph.add_edge((row, column), (row, column-1), 1)
-                if len(self.game_heristic) > row + 1:
+                if len(self.game_board) > row + 1:
                     graph.add_edge((row, column), (row + 1, column), 1)
                 if row - 1 >= 0:
                     graph.add_edge((row, column), (row - 1, column), 1)
+    
+    def update_distances_for_monsters(self, graph):
+        for monster in self.monsters:
+            monster_row, monster_column = monster
+            for i in range(1, monster_column):
+                if self.game_board[monster_row][monster_column - i] not in unpassable_values:
+                    graph.add_edge((monster_row, monster_column), (monster_row, monster_column - i), i)
+                else:
+                    break
+            for i in range(1, len(self.game_board[0]) - monster_column):
+                if self.game_board[monster_row][monster_column + i] not in unpassable_values:
+                    graph.add_edge((monster_row, monster_column), (monster_row, monster_column + i), i)
+                else:
+                    break
+            for i in range(1, monster_row):
+                if self.game_board[monster_row - i][monster_column] not in unpassable_values:
+                    graph.add_edge((monster_row, monster_column), (monster_row - i, monster_column), i)
+                else:
+                    break
+            for i in range(1, len(self.game_board) - monster_row):
+                if self.game_board[monster_row + i][monster_column] not in unpassable_values:
+                    graph.add_edge((monster_row, monster_column), (monster_row + i, monster_column), i)
+                else:
+                    break
+
+    def calculate_heuristic(self, initial_game_distances):
+        #create graph
+        graph = Graph()
+        self.create_graph_from_initial_distances(graph, initial_game_distances)
+        #calculate min distance to pass door
+        self.update_distances_for_doors(graph)
+        #calculate min distance to pass monsters
+        self.update_distances_for_monsters(graph)
         #calculate distance from treasure to each node
         visited, path = dijsktra(graph, self.treasure)
         self.game_heristic = visited
@@ -152,7 +184,7 @@ class WumpusProblem(search.Problem):
                 yield action
     
     def can_kill_monster(self, hero, direction, monster):
-        hero_number, row, column = hero
+        _, row, column = hero
         if direction == 'R':
             return row == monster[1] and column < monster[2]
         elif direction == 'L':
