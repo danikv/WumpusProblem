@@ -35,7 +35,8 @@ class WumpusProblem(search.Problem):
         """Don't forget to implement the goal test
         You should change the initial to your own representation.
         search.Problem.__init__(self, initial) creates the root node"""
-        game_distances = [[0 for i in range(len(initial[0]))] for j in range(len(initial))]
+        initial_as_list = [list(initial[i]) for i in range(len(initial))]
+        game_distances = [[0 for i in range(len(initial_as_list[0]))] for j in range(len(initial_as_list))]
         state = set()
         self.doors = [(0,0), (0,0), (0,0), (0,0), (0,0)]
         self.keys = [(0,0), (0,0), (0,0), (0,0), (0,0)]
@@ -48,10 +49,10 @@ class WumpusProblem(search.Problem):
         self.cant_move.update(doors_encoding)
         #add wall
         self.cant_move.add(20)
-        self.init(game_distances, state, initial)
-        self.game = initial
+        self.init(game_distances, state, initial_as_list)
+        self.game = initial_as_list
         self.calculateHeuristic(game_distances)
-        search.Problem.__init__(self, initial)
+        search.Problem.__init__(self, initial_as_list)
         self.initial = frozenset(state)
 
     def init(self, game_distances, state, initial):
