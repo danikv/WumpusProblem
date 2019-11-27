@@ -74,39 +74,40 @@ class WumpusProblem(search.Problem):
         """Don't forget to implement the goal test
         You should change the initial to your own representation.
         search.Problem.__init__(self, initial) creates the root node"""
+        new_initial = [list(initial[i]) for i in range(len(initial))]
         initial_state = set()
         self.doors = [(0,0), (0,0), (0,0), (0,0), (0,0)]
         self.keys = [(0,0), (0,0), (0,0), (0,0), (0,0)]
         self.monsters = set()
-        initial_game_distances = [[0 for i in range(len(initial[0]))] for j in range(len(initial))]
-        for i in range(len(initial)):
-            for j in range(len(initial[0])):
-                if initial[i][j] in heroes_values:
-                    initial_state.add((initial[i][j],i,j))
+        initial_game_distances = [[0 for i in range(len(new_initial[0]))] for j in range(len(new_initial))]
+        for i in range(len(new_initial)):
+            for j in range(len(new_initial[0])):
+                if new_initial[i][j] in heroes_values:
+                    initial_state.add((new_initial[i][j],i,j))
                     initial_game_distances[i][j] = 1
-                elif initial[i][j] == gold_value:
+                elif new_initial[i][j] == gold_value:
                     self.treasure = (i, j)
                     initial_game_distances[i][j] = 1
-                elif initial[i][j] in doors_values:
-                    initial_state.add((initial[i][j], i, j))
-                    self.doors[initial[i][j] - 45] = (i, j)
+                elif new_initial[i][j] in doors_values:
+                    initial_state.add((new_initial[i][j], i, j))
+                    self.doors[new_initial[i][j] - 45] = (i, j)
                     initial_game_distances[i][j] = sys.maxsize
-                elif initial[i][j] in keys_values:
-                    self.keys[initial[i][j] - 55] = (i, j)
+                elif new_initial[i][j] in keys_values:
+                    self.keys[new_initial[i][j] - 55] = (i, j)
                     initial_game_distances[i][j] = 1
-                elif initial[i][j] == monster_value:
+                elif new_initial[i][j] == monster_value:
                     initial_state.add((monster_value, i, j))
                     self.monsters.add((i,j))
                     initial_game_distances[i][j] = sys.maxsize
-                elif initial[i][j] == passage_value:
+                elif new_initial[i][j] == passage_value:
                     initial_game_distances[i][j] = 1
                 else:
                     #pit or wall
                     initial_game_distances[i][j] = sys.maxsize
         #change input for the algorithem
-        self.game_board = initial
+        self.game_board = new_initial
         self.calculate_heuristic(initial_game_distances)
-        search.Problem.__init__(self, initial)
+        search.Problem.__init__(self, new_initial)
         self.initial = frozenset(initial_state)
     
 

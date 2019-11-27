@@ -8,27 +8,26 @@ def timeout_exec(func, args=(), kwargs={}, timeout_duration=10, default=None):
     using the args, kwargs and return the given default value if the
     timeout_duration is exceeded.
     """
-    #import threading
-    #class InterruptableThread(threading.Thread):
-    #    def __init__(self):
-    #        threading.Thread.__init__(self)
-    #        self.result = default
+    import threading
+    class InterruptableThread(threading.Thread):
+        def __init__(self):
+            threading.Thread.__init__(self)
+            self.result = default
 
-    #    def run(self):
+        def run(self):
             # remove try if you want program to abort at error
             # try:
-    #        self.result = func(*args, **kwargs)
+            self.result = func(*args, **kwargs)
             # except Exception as e:
             #    self.result = (-3, -3, e)
 
-    #it = InterruptableThread()
-    #it.start()
-    #it.join(timeout_duration)
-    #if it.isAlive():
-    #    return default
-    #else:
-    #    return it.result
-    return func(*args, **kwargs)
+    it = InterruptableThread()
+    it.start()
+    it.join(timeout_duration)
+    if it.isAlive():
+        return default
+    else:
+        return it.result
 
 
 def check_problem(p, search_method, timeout):
@@ -74,34 +73,34 @@ def main():
     """Here goes the input you want to check"""
     problems = [
 
-        [
-            [20,   11,    10,    60,    70]
-        ],
+        (
+            (20,   11,    10,    60,    70),
+        ),
 
-        [
-            [11,	10,    30,	  70]
-        ],
+        (
+            (11,	10,    30,	  70),
+        ),
 
-        [
-            [11,    10,    10,    10],
-            [30,    30,    30,    30],
-            [12,    20,    60,    70],
-            [10,    10,    10,    10],
-        ],
+        (
+            (11,    10,    10,    10),
+            (30,    30,    30,    30),
+            (12,    20,    60,    70),
+            (10,    10,    10,    10),
+        ),
 
-        [
-            [11,    10,    10,    10],
-            [20,    20,    20,    10],
-            [12,    30,    20,    10],
-            [45,    70,    20,    55],
-        ],
+        (
+            (11,    10,    10,    10),
+            (20,    20,    20,    10),
+            (12,    30,    20,    10),
+            (45,    70,    20,    55),
+        ),
 
-        [
-            [11,    10,    10,    12],
-            [10,    60,    10,    10],
-            [10,    10,    60,    10],
-            [10,    10,    70,    30],
-        ]
+        (
+            (11,    10,    10,    12),
+            (10,    60,    10,    10),
+            (10,    10,    60,    10),
+            (10,    10,    70,    30),
+        ),
     ]
     solve_problems(problems)
 
