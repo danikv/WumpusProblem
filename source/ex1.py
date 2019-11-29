@@ -36,6 +36,19 @@ class Graph:
     self.distances[(from_node, to_node)] = distance
     self.distances[(to_node, from_node)] = distance
 
+  def remove_edge(self, from_node, to_node):
+    self.edges[from_node].remove(to_node)
+    self.edges[to_node].remove(from_node)
+    del self.distances[(from_node, to_node)]
+    del self.distances[(to_node, from_node)]
+
+  def deep_clone(self):
+    cloned = Graph()
+    cloned.nodes = self.nodes.copy()
+    cloned.edges = self.edges.copy()
+    cloned.distances = self.distances.copy()
+    return cloned
+
 
 def dijsktra(graph, initial):
   visited = {initial: 0}
@@ -98,7 +111,7 @@ class WumpusProblem(search.Problem):
                 elif new_initial[i][j] == monster_value:
                     initial_state.add((monster_value, i, j))
                     self.monsters.add((i,j))
-                    initial_game_distances[i][j] = sys.maxsize
+                    initial_game_distances[i][j] = 1
                 elif new_initial[i][j] == passage_value:
                     initial_game_distances[i][j] = 1
                 else:
@@ -106,9 +119,10 @@ class WumpusProblem(search.Problem):
                     initial_game_distances[i][j] = sys.maxsize
         #change input for the algorithem
         self.game_board = new_initial
-        self.calculate_heuristic(initial_game_distances)
         search.Problem.__init__(self, new_initial)
         self.initial = frozenset(initial_state)
+        self.game_heristic = {}
+        self.calculate_heuristic(initial_game_distances)
     
 
     def create_graph_from_initial_distances(self, graph, initial_game_distances):
@@ -127,17 +141,7 @@ class WumpusProblem(search.Problem):
     def update_distances_for_doors(self, graph):
         for i in range(len(self.keys)):
             if self.keys[i] != (0,0) and self.doors[i] != (0,0):
-                graph.add_edge(self.keys[i], self.doors[i], 0)
-                #update near door values
-                row, column = self.doors[i]
-                if len(self.game_board[0]) > column + 1:
-                    graph.add_edge((row, column), (row, column+1), 1)
-                if column - 1 >= 0:
-                    graph.add_edge((row, column), (row, column-1), 1)
-                if len(self.game_board) > row + 1:
-                    graph.add_edge((row, column), (row + 1, column), 1)
-                if row - 1 >= 0:
-                    graph.add_edge((row, column), (row - 1, column), 1)
+                graph.add_edge(self.keys[i], self.doors[i], 20)
     
     def update_distances_for_monsters(self, graph):
         for monster in self.monsters:
@@ -163,6 +167,21 @@ class WumpusProblem(search.Problem):
                 else:
                     break
 
+    def calculate_distances_for_removed_door(self, removed_door, graph):
+        new_graph = graph.deep_clone()
+        door_value, row, column = removed_door
+        graph.remove_edge(self.keys[door_value - 45], self.doors[door_value - 45])
+        if len(self.game_board[0]) > column + 1:
+            graph.add_edge((row, column), (row, column+1), 1)
+        if column - 1 >= 0:
+            graph.add_edge((row, column), (row, column-1), 1)
+        if len(self.game_board) > row + 1:
+            graph.add_edge((row, column), (row + 1, column), 1)
+        if row - 1 >= 0:
+            graph.add_edge((row, column), (row - 1, column), 1)
+        visited, path = dijsktra(graph, self.treasure)
+        return (new_graph, visited)
+
     def calculate_heuristic(self, initial_game_distances):
         #create graph
         graph = Graph()
@@ -170,10 +189,11 @@ class WumpusProblem(search.Problem):
         #calculate min distance to pass door
         self.update_distances_for_doors(graph)
         #calculate min distance to pass monsters
-        self.update_distances_for_monsters(graph)
+        #self.update_distances_for_monsters(graph)
         #calculate distance from treasure to each node
         visited, path = dijsktra(graph, self.treasure)
-        self.game_heristic = visited
+        #calculate dijkstra for each removed door
+        self.game_heristic[frozenset(filter(lambda x : x[0] in doors_values, self.initial))] = (graph, visited)
 
     def actions(self, state):
         """Return the actions that can be executed in the given
@@ -229,7 +249,15 @@ class WumpusProblem(search.Problem):
         elif direction == 'D':
             new_state.append((hero_number, row + 1, column))
         hero, row, column = new_state[-1]
+        old_state = set(new_state)
         new_state = self.remove_door(row, column, new_state)
+        if len(old_state) != len(new_state):
+            if not frozenset(filter(lambda x : x[0] in doors_values, new_state)) in self.game_heristic.keys():
+                #calculate heristic
+                #print('removed')
+                self.game_heristic[frozenset(filter(lambda x : x[0] in doors_values, new_state))] = \
+                    self.calculate_distances_for_removed_door(list(set(old_state) - set(new_state))[0], \
+                    self.game_heristic[frozenset(filter(lambda x : x[0] in doors_values, old_state))][0])
         self.kill_hero(hero, row, column, new_state)
         return frozenset(new_state)
 
@@ -251,7 +279,10 @@ class WumpusProblem(search.Problem):
         heroes = list(filter(lambda x : x[0] in heroes_values, node.state))
         if len(heroes) == 0:
             return sys.maxsize
-        return min(map(lambda x : self.game_heristic[(x[1], x[2])], heroes))
+        value = min(map(lambda x : self.game_heristic[frozenset(filter(lambda x : x[0] in doors_values, node.state))][1][(x[1], x[2])], heroes))
+        #print(value)
+        #print(self.game_heristic[frozenset(filter(lambda x : x[0] in doors_values, node.state))][1])
+        return value
 
     def goal_test(self, state):
         """ Given a state, checks if this is the goal state.
@@ -272,15 +303,15 @@ class WumpusProblem(search.Problem):
             value, monster_row, monster_column = monster
             if row == monster_row:
                 if monster_column < column:
-                    if len(unpassable_values.intersection(set(self.game_board[row][monster_column:column]))) == 0:
+                    if len(unpassable_values.intersection(set(self.game_board[row][monster_column:column - 1]))) == 0:
                         actions.append(('L', hero, 'shoot'))
-                elif len(unpassable_values.intersection(set(self.game_board[row][column:monster_column]))) == 0:
+                elif len(unpassable_values.intersection(set(self.game_board[row][column + 1:monster_column]))) == 0:
                     actions.append(('R', hero, 'shoot'))
             elif column == monster_column:
                 if monster_row < row:
-                    if len(unpassable_values.intersection({self.game_board[monster_row + i][column] for i in range(row - monster_row)})) == 0:
+                    if len(unpassable_values.intersection({self.game_board[monster_row + i][column] for i in range(1, row - monster_row)})) == 0:
                         actions.append(('U', hero, 'shoot'))
-                elif len(unpassable_values.intersection({self.game_board[row + i][column] for i in range(monster_row - row)})) == 0:
+                elif len(unpassable_values.intersection({self.game_board[row + i][column] for i in range(1, monster_row - row)})) == 0:
                     actions.append(('D', hero, 'shoot'))
         return actions
 
