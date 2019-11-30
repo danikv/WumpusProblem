@@ -141,7 +141,18 @@ class WumpusProblem(search.Problem):
     def update_distances_for_doors(self, graph):
         for i in range(len(self.keys)):
             if self.keys[i] != (0,0) and self.doors[i] != (0,0):
-                graph.add_edge(self.keys[i], self.doors[i], 20)
+                clone = graph.deep_clone()
+                row, column = self.doors[i]
+                if len(self.game_board[0]) > column + 1:
+                    clone.add_edge((row, column), (row, column+1), 1)
+                if column - 1 >= 0:
+                    clone.add_edge((row, column), (row, column-1), 1)
+                if len(self.game_board) > row + 1:
+                    clone.add_edge((row, column), (row + 1, column), 1)
+                if row - 1 >= 0:
+                    clone.add_edge((row, column), (row - 1, column), 1)
+                weights, _ = dijsktra(clone, self.doors[i])
+                graph.add_edge(self.keys[i], self.doors[i], weights[self.keys[i]])
 
     def calculate_distances_for_removed_door(self, removed_door, graph):
         new_graph = graph.deep_clone()
