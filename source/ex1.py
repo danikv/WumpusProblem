@@ -7,19 +7,32 @@ import sys
 ids = ["111111111", "111111111"]
 
 class Graph:
-  def __init__(self):
-    self.nodes = set()
-    self.edges = defaultdict(list)
-    self.distances = {}
+    def __init__(self):
+        self.nodes = set()
+        self.edges = defaultdict(list)
+        self.distances = {}
 
-  def add_node(self, value):
-    self.nodes.add(value)
+    def addNode(self, value):
+        self.nodes.add(value)
 
-  def add_edge(self, from_node, to_node, distance):
-    self.edges[from_node].append(to_node)
-    self.edges[to_node].append(from_node)
-    self.distances[(from_node, to_node)] = distance
-    self.distances[(to_node, from_node)] = distance
+    def addEdge(self, from_node, to_node, distance):
+        self.edges[from_node].append(to_node)
+        self.edges[to_node].append(from_node)
+        self.distances[(from_node, to_node)] = distance
+        self.distances[(to_node, from_node)] = distance
+
+    def removeEdge(self, from_node, to_node):
+        self.edges[from_node].remove(to_node)
+        self.edges[to_node].remove(from_node)
+        del self.distances[(from_node, to_node)]
+        del self.distances[(to_node, from_node)]
+
+    def clone(self):
+        graph = Graph()
+        graph.nodes = self.nodes.copy()
+        graph.edges = self.edges.copy()
+        graph.distances = self.distances.copy()
+        return graph
 
 passage_encoding = 10
 heroes_encoding = {11, 12, 13, 14}
@@ -51,9 +64,10 @@ class WumpusProblem(search.Problem):
         self.cant_move.add(20)
         self.init(game_distances, state, initial_as_list)
         self.game = initial_as_list
-        self.calculateHeuristic(game_distances)
         search.Problem.__init__(self, initial_as_list)
         self.initial = frozenset(state)
+        self.shortest_path_heuristic = {}
+        self.calculateHeuristic(game_distances)
 
     def init(self, game_distances, state, initial):
         for i in range(len(initial)):
@@ -64,7 +78,7 @@ class WumpusProblem(search.Problem):
                 elif initial[i][j] == monster_encoding:
                     state.add((monster_encoding, i, j))
                     self.monsters.add((i,j))
-                    game_distances[i][j] = sys.maxsize
+                    game_distances[i][j] = 1
                 elif initial[i][j] in doors_encoding:
                     state.add((initial[i][j], i, j))
                     self.doors[initial[i][j] - 45] = (i, j)
@@ -83,42 +97,33 @@ class WumpusProblem(search.Problem):
     def createGraph(self, graph, game_distances):
         for row in range(len(game_distances)):
             for column in range(len(game_distances[0])):
-                graph.add_node((row, column))
+                graph.addNode((row, column))
                 addGraphEdge(graph, game_distances, row, column, row, column + 1, lambda row,column: game_distances[row][column])
                 addGraphEdge(graph, game_distances, row, column, row, column - 1, lambda row,column: game_distances[row][column])
                 addGraphEdge(graph, game_distances, row, column, row + 1, column, lambda row,column: game_distances[row][column])
                 addGraphEdge(graph, game_distances, row, column, row - 1, column, lambda row,column: game_distances[row][column])
         for i in range(len(self.keys)):
             if self.keys[i] != (0,0) and self.doors[i] != (0,0):
-                graph.add_edge(self.keys[i], self.doors[i], 0)
-                #update near door values
-                row, column = self.doors[i]
-                addGraphEdge(graph, game_distances, row, column, row, column + 1, lambda x,y : 1)
-                addGraphEdge(graph, game_distances, row, column, row, column - 1, lambda x,y : 1)
-                addGraphEdge(graph, game_distances, row, column, row + 1, column, lambda x,y : 1)
-                addGraphEdge(graph, game_distances, row, column, row - 1, column, lambda x,y : 1)
-        for monster in self.monsters:
-            monster_row, monster_column = monster
-            for i in range(1, monster_column):
-                if not addMonsterEdge(graph, self.game, monster_row, monster_column, monster_row, monster_column - i, self.cant_move, i):
-                    break
-            for i in range(1, len(self.game[0]) - monster_column):
-                if not addMonsterEdge(graph, self.game, monster_row, monster_column, monster_row, monster_column + i, self.cant_move, i):
-                    break
-            for i in range(1, monster_row):
-                if not addMonsterEdge(graph, self.game, monster_row, monster_column, monster_row + i, monster_column, self.cant_move, i):
-                    break
-            for i in range(1, len(self.game) - monster_row):
-                if not addMonsterEdge(graph, self.game, monster_row, monster_column, monster_row - i, monster_column, self.cant_move, i):
-                    break
+                graph.addEdge(self.keys[i], self.doors[i], 20)
         
+    def calculateHeuristicWithoutDoor(self, removed_door, graph):
+        new_graph = graph.clone()
+        door_value, row, column = removed_door
+        graph.removeEdge(self.keys[door_value - 45], self.doors[door_value - 45])
+        addGraphEdge(graph, self.game, row, column, row, column + 1, lambda row,column: 1)
+        addGraphEdge(graph, self.game, row, column, row, column - 1, lambda row,column: 1)
+        addGraphEdge(graph, self.game, row, column, row + 1, column, lambda row,column: 1)
+        addGraphEdge(graph, self.game, row, column, row - 1, column, lambda row,column: 1)
+        weights, _ = dijsktra(graph, self.gold)
+        return (weights, new_graph)
+
     def calculateHeuristic(self, game_distances):
         #create graph
         graph = Graph()
         self.createGraph(graph, game_distances)
         #calculate distance from gold
         weights, _ = dijsktra(graph, self.gold)
-        self.shortest_path_heuristic = weights
+        self.shortest_path_heuristic[getDoorsFromState(self.initial)] = (weights, graph)
 
     def actions(self, state):
         """Return the actions that can be executed in the given
@@ -138,7 +143,12 @@ class WumpusProblem(search.Problem):
         if current_action == 'shoot':
             return shootResult(direction, used_hero, state)
         else :
-            return moveResult(self.game, direction, used_hero, state)
+            new_state = moveResult(self.game, direction, used_hero, state)
+            if len(new_state) != len(state):
+                door = getRemovedDoor(state, new_state)
+                if door and getDoorsFromState(new_state) not in self.shortest_path_heuristic.keys():
+                    self.shortest_path_heuristic[getDoorsFromState(new_state)] = self.calculateHeuristicWithoutDoor(door[0], self.shortest_path_heuristic[getDoorsFromState(state)][1])
+            return new_state
 
     def h(self, node):
         """ This is the heuristic. It gets a node (not a state,
@@ -147,7 +157,9 @@ class WumpusProblem(search.Problem):
         heroes = list(filter(lambda x : x[0] in heroes_encoding, node.state))
         if len(heroes) == 0:
             return sys.maxsize
-        return min(map(lambda x : self.shortest_path_heuristic[(x[1], x[2])], heroes))
+        value = min(map(lambda x : self.shortest_path_heuristic[getDoorsFromState(node.state)][0][(x[1], x[2])], heroes))
+        #print(value)
+        return value
 
     def goal_test(self, state):
         """ Given a state, checks if this is the goal state.
@@ -235,15 +247,15 @@ def shootActions(game, row, column, hero, state, cant_move):
         _, monster_row, monster_column = monster
         if row == monster_row:
             if monster_column < column:
-                if len(cant_move & set(game[row][monster_column:column])) == 0:
+                if len(cant_move & set(game[row][monster_column + 1:column])) == 0:
                     actions.append(('L', hero, 'shoot'))
-            elif len(cant_move & set(game[row][column:monster_column])) == 0:
+            elif len(cant_move & set(game[row][column:monster_column - 1])) == 0:
                 actions.append(('R', hero, 'shoot'))
         elif column == monster_column:
             if monster_row < row:
-                if len(cant_move & {game[monster_row + i][column] for i in range(row - monster_row)}) == 0:
+                if len(cant_move & {game[monster_row + i][column] for i in range(1, row - monster_row)}) == 0:
                     actions.append(('U', hero, 'shoot'))
-            elif len(cant_move & {game[row + i][column] for i in range(monster_row - row)}) == 0:
+            elif len(cant_move & {game[row + i][column] for i in range(1, monster_row - row)}) == 0:
                 actions.append(('D', hero, 'shoot'))
     return actions
 
@@ -293,13 +305,14 @@ def dijsktra(graph, initial):
 
 def addGraphEdge(graph, game_distances, source_row, source_column, row, column, evaluate_value):
     if len(game_distances) > row and len(game_distances[0]) > column and row >= 0 and column >= 0:
-        graph.add_edge((source_row, source_column), (row, column), evaluate_value(row, column))
+        graph.addEdge((source_row, source_column), (row, column), evaluate_value(row, column))
 
-def addMonsterEdge(graph, game, monster_row, monster_column, current_row, current_column, cant_move, value):
-    if game[current_row][current_column] not in cant_move:
-        graph.add_edge((monster_row, monster_column), (current_row, current_column), value)
-        return True
-    return False
+def getRemovedDoor(old_state, new_state):
+    diffrence = old_state - new_state
+    return list(filter(lambda x : x[0] in doors_encoding , diffrence))
+
+def getDoorsFromState(state):
+    return frozenset(filter(lambda x : x[0] in doors_encoding, state))
 
 def create_wumpus_problem(game):
     return WumpusProblem(game)
