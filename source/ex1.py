@@ -101,10 +101,17 @@ class WumpusProblem(search.Problem):
                 addGraphEdge(graph, game_distances, row, column, row, column + 1, lambda row,column: game_distances[row][column])
                 addGraphEdge(graph, game_distances, row, column, row, column - 1, lambda row,column: game_distances[row][column])
                 addGraphEdge(graph, game_distances, row, column, row + 1, column, lambda row,column: game_distances[row][column])
-                addGraphEdge(graph, game_distances, row, column, row - 1, column, lambda row,column: game_distances[row][column])
+                #addGraphEdge(graph, game_distances, row, column, row - 1, column, lambda row,column: game_distances[row][column])
         for i in range(len(self.keys)):
             if self.keys[i] != (0,0) and self.doors[i] != (0,0):
-                graph.addEdge(self.keys[i], self.doors[i], 20)
+                new_graph = graph.clone()
+                row, column = self.doors[i]
+                addGraphEdge(new_graph, game_distances, row, column, row, column + 1, lambda row,column: 1)
+                addGraphEdge(new_graph, game_distances, row, column, row, column - 1, lambda row,column: 1)
+                addGraphEdge(new_graph, game_distances, row, column, row + 1, column, lambda row,column: 1)
+                addGraphEdge(new_graph, game_distances, row, column, row - 1, column, lambda row,column: 1)
+                weights, _ = dijsktra(new_graph, self.doors[i])
+                graph.addEdge(self.keys[i], self.doors[i], weights[self.keys[i]])
         
     def calculateHeuristicWithoutDoor(self, removed_door, graph):
         new_graph = graph.clone()
@@ -157,9 +164,7 @@ class WumpusProblem(search.Problem):
         heroes = list(filter(lambda x : x[0] in heroes_encoding, node.state))
         if len(heroes) == 0:
             return sys.maxsize
-        value = min(map(lambda x : self.shortest_path_heuristic[getDoorsFromState(node.state)][0][(x[1], x[2])], heroes))
-        #print(value)
-        return value
+        return min(map(lambda x : self.shortest_path_heuristic[getDoorsFromState(node.state)][0][(x[1], x[2])], heroes))
 
     def goal_test(self, state):
         """ Given a state, checks if this is the goal state.
@@ -237,8 +242,8 @@ def moveResult(game, direction, used_hero, state):
     killHero(hero, row, column, new_state)
     return frozenset(new_state)
 
-def canMove(game, row, column, passable, state):
-    return game[row][column] in passable or \
+def canMove(game, row, column, can_move, state):
+    return game[row][column] in can_move or \
         (game[row][column] == monster_encoding and (monster_encoding, row, column) not in state)
 
 def shootActions(game, row, column, hero, state, cant_move):
@@ -247,9 +252,9 @@ def shootActions(game, row, column, hero, state, cant_move):
         _, monster_row, monster_column = monster
         if row == monster_row:
             if monster_column < column:
-                if len(cant_move & set(game[row][monster_column + 1:column])) == 0:
+                if len(cant_move & set(game[row][monster_column:column - 1])) == 0:
                     actions.append(('L', hero, 'shoot'))
-            elif len(cant_move & set(game[row][column:monster_column - 1])) == 0:
+            elif len(cant_move & set(game[row][column + 1:monster_column])) == 0:
                 actions.append(('R', hero, 'shoot'))
         elif column == monster_column:
             if monster_row < row:
